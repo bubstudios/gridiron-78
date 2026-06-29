@@ -1,0 +1,101 @@
+{
+  "name": "Player",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "team_id": {
+      "type": "string"
+    },
+    "team_abbr": {
+      "type": "string"
+    },
+    "number": {
+      "type": "number"
+    },
+    "position": {
+      "type": "string",
+      "enum": [
+        "QB",
+        "RB",
+        "FB",
+        "WR",
+        "TE",
+        "LT",
+        "LG",
+        "C",
+        "RG",
+        "RT",
+        "DE",
+        "DT",
+        "NT",
+        "LB",
+        "MLB",
+        "OLB",
+        "CB",
+        "SS",
+        "FS",
+        "K",
+        "P"
+      ]
+    },
+    "position_group": {
+      "type": "string",
+      "enum": [
+        "QB",
+        "RB",
+        "WR_TE",
+        "OL",
+        "DL",
+        "LB",
+        "DB",
+        "K_P"
+      ]
+    },
+    "speed": {
+      "type": "number"
+    },
+    "strength": {
+      "type": "number"
+    },
+    "agility": {
+      "type": "number"
+    },
+    "awareness": {
+      "type": "number"
+    },
+    "catching": {
+      "type": "number"
+    },
+    "throwing": {
+      "type": "number"
+    },
+    "blocking": {
+      "type": "number"
+    },
+    "tackling": {
+      "type": "number"
+    },
+    "kick_power": {
+      "type": "number"
+    },
+    "injury_prone": {
+      "type": "number"
+    },
+    "is_injured": {
+      "type": "boolean",
+      "default": false
+    },
+    "is_starter": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "name",
+    "team_abbr",
+    "position",
+    "position_group"
+  ]
+}
