@@ -403,10 +403,38 @@ export function simulateExtraPoint(offRoster, weather) {
   return chance(xpChance);
 }
 
-export function simulateKickoff() {
-  // After a score, ball goes to the 20-25 yard line on average
-  const returnYards = rand(15, 35);
-  return Math.min(40, returnYards);
+export function simulateKickoff(kickingRoster, returnRoster) {
+  const kicker = kickingRoster?.find(p => p.position === "K") || { name: "Kicker", kick_power: 70 };
+  const returner = returnRoster?.find(p => p.position_group === "RB" && p.is_starter) ||
+                   returnRoster?.find(p => p.position_group === "WR_TE" && p.is_starter) ||
+                   { name: "Returner", speed: 75 };
+
+  const touchbackChance = 18 + (kicker.kick_power - 70) / 2;
+  if (chance(touchbackChance)) {
+    return {
+      returnYards: 0, isTouchback: true, isReturnTD: false, startingYard: 20,
+      kicker: kicker.name, returner: returner.name,
+      description: `${kicker.name} kicks it through the end zone for a touchback. Ball at the 20.`,
+    };
+  }
+
+  let returnYards = rand(5, 35);
+  if (chance(8) && returner.speed > 88) returnYards += rand(10, 30);
+
+  if (chance(1.5) && returner.speed > 85) {
+    return {
+      returnYards, isTouchback: false, isReturnTD: true, startingYard: 100,
+      kicker: kicker.name, returner: returner.name,
+      description: `KICKOFF RETURN TOUCHDOWN! ${returner.name} takes it all the way back ${returnYards} yards!`,
+    };
+  }
+
+  const startingYard = Math.min(50, 5 + returnYards);
+  return {
+    returnYards, isTouchback: false, isReturnTD: false, startingYard,
+    kicker: kicker.name, returner: returner.name,
+    description: `${kicker.name} kicks off. ${returner.name} returns it ${returnYards} yards to the ${startingYard}.`,
+  };
 }
 
 export function getInitialStats() {

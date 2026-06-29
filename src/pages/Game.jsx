@@ -12,6 +12,7 @@ import { OFFENSIVE_PLAYS, DEFENSIVE_PLAYS } from '@/lib/playbook';
 import { ArrowLeft, BarChart3, ScrollText, Users } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import PlayerStatsTable from '@/components/game/PlayerStatsTable';
+import KickoffBanner from '@/components/game/KickoffBanner';
 import { applyPlayerStats, getInitialPlayerStats } from '@/lib/gameEngine';
 
 function getTeam(abbr) {
@@ -87,6 +88,8 @@ export default function Game() {
       receiving_second_half: coinWinner === userAbbr ? oppAbbr : userAbbr,
       awaitingXP: false,
       lastTDTeam: null,
+      awaitingKickoff: true,
+      kickoffKickingTeam: receiving === userAbbr ? oppAbbr : userAbbr,
       player_stats: getInitialPlayerStats([userAbbr, oppAbbr]),
     };
   });
@@ -210,6 +213,8 @@ export default function Game() {
         let awayScore = gs.away_score;
         let awaitingXP = false;
         let lastTDTeam = null;
+        let awaitingKickoff = false;
+        let kickoffKickingTeam = null;
 
         newLogs.push(result.description);
 
@@ -240,12 +245,9 @@ export default function Game() {
           else awayScore += 3;
           offStats.fieldGoals = (offStats.fieldGoals || 0) + 1;
           offStats.fieldGoalAttempts = (offStats.fieldGoalAttempts || 0) + 1;
-          // Kickoff
-          newPossession = defTeam;
-          newDirection = gs.direction === "right" ? "left" : "right";
-          newBallOn = defTeam === oppAbbr ? simulateKickoff() : 100 - simulateKickoff();
-          newDown = 1;
-          newYTG = 10;
+          // Scoring team kicks off
+          awaitingKickoff = true;
+          kickoffKickingTeam = offTeam;
         } else if (result.turnover) {
           if (result.turnoverType === "missed_fg") {
             offStats.fieldGoalAttempts = (offStats.fieldGoalAttempts || 0) + 1;
@@ -336,11 +338,8 @@ export default function Game() {
             // Halftime - swap possession
             if (newQuarter === 3) {
               newLogs.push("--- HALFTIME ---");
-              newPossession = gs.receiving_second_half;
-              newDirection = gs.receiving_second_half === userAbbr ? "right" : "left";
-              newBallOn = gs.receiving_second_half === oppAbbr ? simulateKickoff() : 100 - simulateKickoff();
-              newDown = 1;
-              newYTG = 10;
+              awaitingKickoff = true;
+              kickoffKickingTeam = gs.receiving_second_half === userAbbr ? oppAbbr : userAbbr;
             }
           } else {
             newTime = 0;
@@ -378,6 +377,8 @@ export default function Game() {
           player_stats: newPlayerStats,
           awaitingXP,
           lastTDTeam,
+          awaitingKickoff,
+          kickoffKickingTeam,
         };
       });
 
@@ -403,18 +404,57 @@ export default function Game() {
         newLogs.push("Extra point is NO GOOD!");
       }
 
-      // Kickoff
-      const defTeam = tdTeam === userAbbr ? oppAbbr : userAbbr;
-      const newDirection = defTeam === userAbbr ? "right" : "left";
-      const kickReturn = simulateKickoff();
-      const newBallOn = defTeam === oppAbbr ? kickReturn : 100 - kickReturn;
-
+      // Scoring team kicks off
       return {
         ...gs,
         play_log: newLogs,
         awaitingXP: false,
         lastTDTeam: null,
-        possession: defTeam,
+        awaitingKickoff: true,
+        kickoffKickingTeam: tdTeam,
+      };
+    });
+  }, [userAbbr, oppAbbr, rosters]);
+
+  // Handle kickoff
+  const handleKickoff = useCallback(() => {
+    setGameState(prev => {
+      const gs = { ...prev };
+      const kickingTeam = gs.kickoffKickingTeam;
+      const receivingTeam = kickingTeam === userAbbr ? oppAbbr : userAbbr;
+      const kickingRoster = rosters[kickingTeam];
+      const returnRoster = rosters[receivingTeam];
+
+      const koResult = simulateKickoff(kickingRoster, returnRoster);
+      const newLogs = [...gs.play_log, `👟 ${koResult.description}`];
+
+      if (koResult.isReturnTD) {
+        let homeScore = gs.home_score;
+        let awayScore = gs.away_score;
+        if (receivingTeam === oppAbbr) homeScore += 6;
+        else awayScore += 6;
+        newLogs.push("🏈 TOUCHDOWN on the kickoff return!");
+        return {
+          ...gs,
+          play_log: newLogs,
+          home_score: homeScore,
+          away_score: awayScore,
+          awaitingKickoff: false,
+          kickoffKickingTeam: null,
+          awaitingXP: true,
+          lastTDTeam: receivingTeam,
+        };
+      }
+
+      const newBallOn = receivingTeam === oppAbbr ? koResult.startingYard : 100 - koResult.startingYard;
+      const newDirection = receivingTeam === userAbbr ? "right" : "left";
+
+      return {
+        ...gs,
+        play_log: newLogs,
+        awaitingKickoff: false,
+        kickoffKickingTeam: null,
+        possession: receivingTeam,
         direction: newDirection,
         ball_on: newBallOn,
         down: 1,
@@ -456,6 +496,14 @@ export default function Game() {
           />
         </div>
 
+        {/* Kickoff Banner */}
+        {gameState.awaitingKickoff && !gameState.awaitingXP && (
+          <KickoffBanner
+            kickingTeamAbbr={gameState.kickoffKickingTeam}
+            onKickoff={handleKickoff}
+          />
+        )}
+
         {/* XP Prompt */}
         {gameState.awaitingXP && (
           <div className="bg-green-900/30 border border-green-700/50 rounded-xl p-6 text-center">
@@ -490,7 +538,7 @@ export default function Game() {
         )}
 
         {/* Tabs */}
-        {!isGameOver && !gameState.awaitingXP && (
+        {!isGameOver && !gameState.awaitingXP && !gameState.awaitingKickoff && (
           <>
             <div className="flex gap-1 bg-slate-900 rounded-lg p-1 border border-slate-700">
               <button
@@ -555,7 +603,7 @@ export default function Game() {
         )}
 
         {/* Always show condensed log below play selector */}
-        {tab === "plays" && !isGameOver && !gameState.awaitingXP && gameState.play_log.length > 0 && (
+        {tab === "plays" && !isGameOver && !gameState.awaitingXP && !gameState.awaitingKickoff && gameState.play_log.length > 0 && (
           <div className="bg-slate-900/60 rounded-lg border border-slate-800 p-3">
             <p className="text-xs text-slate-500 mb-1">Last play:</p>
             <p className="text-sm text-slate-300">
