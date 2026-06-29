@@ -97,6 +97,8 @@ export default function Game() {
   const [tab, setTab] = useState("plays"); // "plays" | "stats" | "log" | "players"
   const [animating, setAnimating] = useState(false);
   const [statsSaved, setStatsSaved] = useState(false);
+  const [selectedPlay, setSelectedPlay] = useState(null); // Play selected but not yet hiked
+  const [awaitingHike, setAwaitingHike] = useState(false); // Waiting for hike button tap
 
   // Save player stats to database when game ends
   useEffect(() => {
@@ -143,9 +145,18 @@ export default function Game() {
   const userOnOffense = gameState.possession === userAbbr;
   const isGameOver = gameState.status === "completed";
 
-  const handlePlayCall = useCallback((play) => {
-    if (animating || isGameOver) return;
+  // Select a play (sets awaiting hike)
+  const handleSelectPlay = useCallback((play) => {
+    if (animating || isGameOver || awaitingHike) return;
+    setSelectedPlay(play);
+    setAwaitingHike(true);
+  }, [animating, isGameOver, awaitingHike]);
+
+  // Execute the play after hike
+  const handleHike = useCallback(() => {
+    if (!selectedPlay || animating || isGameOver) return;
     setAnimating(true);
+    setAwaitingHike(false);
 
     setTimeout(() => {
       setGameState(prev => {
@@ -157,10 +168,10 @@ export default function Game() {
 
         let offPlay, defPlay;
         if (offTeam === userAbbr) {
-          offPlay = play;
+          offPlay = selectedPlay;
           defPlay = cpuSelectPlay(false, gs.down, gs.yards_to_go, gs.ball_on, gs.direction);
         } else {
-          defPlay = play;
+          defPlay = selectedPlay;
           offPlay = cpuSelectPlay(true, gs.down, gs.yards_to_go, gs.ball_on, gs.direction);
         }
 
@@ -383,8 +394,9 @@ export default function Game() {
       });
 
       setAnimating(false);
+      setSelectedPlay(null);
     }, 400);
-  }, [animating, isGameOver, userAbbr, oppAbbr, rosters]);
+  }, [selectedPlay, animating, isGameOver, userAbbr, oppAbbr, rosters]);
 
   // Handle extra point
   const handleXP = useCallback(() => {
@@ -495,6 +507,9 @@ export default function Game() {
             awayAbbr={userAbbr}
             homeColor={homeTeam?.primary_color}
             awayColor={awayTeam?.primary_color}
+            awaitingHike={awaitingHike}
+            onHike={handleHike}
+            userOnOffense={userOnOffense}
           />
         </div>
 
@@ -572,8 +587,8 @@ export default function Game() {
             {tab === "plays" && (
               <PlaySelector
                 isOffense={userOnOffense}
-                onSelectPlay={handlePlayCall}
-                disabled={animating}
+                onSelectPlay={handleSelectPlay}
+                disabled={animating || awaitingHike}
                 down={gameState.down}
                 yardsToGo={gameState.yards_to_go}
                 ballOn={gameState.ball_on}

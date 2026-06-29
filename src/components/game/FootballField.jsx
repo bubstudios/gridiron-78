@@ -5,7 +5,7 @@ const ENDZONE_HEIGHT = 60;
 const fieldHeight = 760;
 const totalHeight = fieldHeight + ENDZONE_HEIGHT * 2;
 
-export default function FootballField({ ballOn, direction, down, yardsToGo, possession, homeAbbr, awayAbbr, homeColor, awayColor }) {
+export default function FootballField({ ballOn, direction, down, yardsToGo, possession, homeAbbr, awayAbbr, homeColor, awayColor, awaitingHike, onHike, userOnOffense }) {
   const ballY = ENDZONE_HEIGHT + (ballOn / 100) * fieldHeight;
 
   let firstDownY = null;
@@ -76,6 +76,32 @@ export default function FootballField({ ballOn, direction, down, yardsToGo, poss
 
           {/* Ball */}
           <ellipse cx={FIELD_WIDTH / 2 + 20} cy={ballY} rx={3} ry={5} fill="#8B4513" stroke="#5C2D0A" strokeWidth={1} />
+
+          {/* Hike button - appears near QB (offense) or MLB (defense) */}
+          {awaitingHike && (
+            <g onClick={onHike} style={{ cursor: 'pointer' }}>
+              <rect
+                x={FIELD_WIDTH / 2 - 30}
+                y={ballY + (userOnOffense ? 40 : -40)}
+                width={60}
+                height={28}
+                rx={6}
+                fill="#f59e0b"
+                stroke="#d97706"
+                strokeWidth={2}
+              />
+              <text
+                x={FIELD_WIDTH / 2 + 20}
+                y={ballY + (userOnOffense ? 40 : -40) + 18}
+                fill="#000"
+                fontSize="12"
+                fontWeight="bold"
+                textAnchor="middle"
+              >
+                HIKE!
+              </text>
+            </g>
+          )}
         </svg>
 
         {/* Field info bar */}
