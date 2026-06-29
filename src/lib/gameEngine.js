@@ -32,6 +32,12 @@ function getQB(roster) {
   return roster.find(p => p.position === "QB" && p.is_starter && !p.is_injured) || roster.find(p => p.position === "QB");
 }
 
+function pickRandomDefender(roster, ...groups) {
+  const defenders = roster.filter(p => groups.includes(p.position_group) && p.is_starter && !p.is_injured);
+  if (defenders.length === 0) return { name: "Defender", team_abbr: "UNK", position: "LB" };
+  return defenders[rand(0, defenders.length - 1)];
+}
+
 export function generateWeather(stadiumType) {
   if (stadiumType === "dome") return { weather: "clear", temperature: 72, wind_speed: 0 };
   const weathers = ["clear", "clear", "clear", "rain", "snow", "wind", "fog", "cold"];
@@ -138,6 +144,11 @@ function simulateRun(offPlay, defPlay, offRoster, defRoster, weather, result, ga
     result.turnoverType = "fumble";
     result.description = `${rb.name} fumbles the ball! Recovered by the defense!`;
     result.yards = Math.min(result.yards, 2);
+    const fumbleTackler = pickRandomDefender(defRoster, "DL", "LB");
+    result.playerStats = [
+      { name: rb.name, team_abbr: rb.team_abbr, position: rb.position, delta: { rushingAttempts: 1, rushingYards: Math.max(0, result.yards), fumbles: 1 } },
+      { name: fumbleTackler.name, team_abbr: fumbleTackler.team_abbr, position: fumbleTackler.position, delta: { tackles: 1 } },
+    ];
     return result;
   }
 
@@ -164,6 +175,12 @@ function simulateRun(offPlay, defPlay, offRoster, defRoster, weather, result, ga
     result.yards = yardsToEndzone;
     result.description = `TOUCHDOWN! ${rb.name} ${baseYards > 15 ? "breaks free and scores" : "punches it in"}! ${result.yards}-yard run!`;
   }
+
+  const runTackler = pickRandomDefender(defRoster, "DL", "LB");
+  result.playerStats = [
+    { name: rb.name, team_abbr: rb.team_abbr, position: rb.position, delta: { rushingAttempts: 1, rushingYards: Math.max(0, result.yards), rushingTDs: result.touchdown ? 1 : 0 } },
+    { name: runTackler.name, team_abbr: runTackler.team_abbr, position: runTackler.position, delta: { tackles: 1 } },
+  ];
 
   return result;
 }
@@ -194,6 +211,11 @@ function simulatePass(offPlay, defPlay, offRoster, defRoster, weather, result, g
     result.sack = true;
     result.timeUsed = rand(4, 7);
     result.description = `${qb.name} is SACKED for a loss of ${Math.abs(sackYards)} yards!`;
+    const sacker = pickRandomDefender(defRoster, "DL", "LB");
+    result.playerStats = [
+      { name: qb.name, team_abbr: qb.team_abbr, position: qb.position, delta: { passingAttempts: 1, timesSacked: 1 } },
+      { name: sacker.name, team_abbr: sacker.team_abbr, position: sacker.position, delta: { sacksMade: 1, tackles: 1 } },
+    ];
     return result;
   }
 
@@ -245,6 +267,10 @@ function simulatePass(offPlay, defPlay, offRoster, defRoster, weather, result, g
       result.turnover = true;
       result.turnoverType = "fumble";
       result.description = `${qb.name} completes to ${receiver.name} for ${baseYards} yards, but he FUMBLES! Recovered by the defense!`;
+      result.playerStats = [
+        { name: qb.name, team_abbr: qb.team_abbr, position: qb.position, delta: { passingAttempts: 1, passingCompletions: 1, passingYards: baseYards } },
+        { name: receiver.name, team_abbr: receiver.team_abbr, position: receiver.position, delta: { receptions: 1, receivingYards: baseYards, fumbles: 1 } },
+      ];
       return result;
     }
 
@@ -254,6 +280,10 @@ function simulatePass(offPlay, defPlay, offRoster, defRoster, weather, result, g
       result.touchdown = true;
       result.yards = yardsToEndzone;
       result.description = `TOUCHDOWN! ${qb.name} connects with ${receiver.name} for a ${result.yards}-yard TD pass!`;
+      result.playerStats = [
+        { name: qb.name, team_abbr: qb.team_abbr, position: qb.position, delta: { passingAttempts: 1, passingCompletions: 1, passingYards: result.yards, passingTDs: 1 } },
+        { name: receiver.name, team_abbr: receiver.team_abbr, position: receiver.position, delta: { receptions: 1, receivingYards: result.yards, receivingTDs: 1 } },
+      ];
       return result;
     }
 
@@ -271,6 +301,11 @@ function simulatePass(offPlay, defPlay, offRoster, defRoster, weather, result, g
       result.yards = 0;
       result.timeUsed = rand(4, 8);
       result.description = `INTERCEPTED! ${qb.name}'s pass intended for ${receiver.name} is picked off!`;
+      const interceptor = pickRandomDefender(defRoster, "DB", "LB");
+      result.playerStats = [
+        { name: qb.name, team_abbr: qb.team_abbr, position: qb.position, delta: { passingAttempts: 1, interceptionsThrown: 1 } },
+        { name: interceptor.name, team_abbr: interceptor.team_abbr, position: interceptor.position, delta: { interceptionsMade: 1 } },
+      ];
       return result;
     }
 
@@ -284,6 +319,17 @@ function simulatePass(offPlay, defPlay, offRoster, defRoster, weather, result, g
     const injured = chance(50) ? qb : receiver;
     result.injury = { player: injured.name, severity: chance(20) ? "out_for_game" : "shaken_up" };
   }
+
+  const passCompleted = result.yards > 0;
+  const passStats = [
+    { name: qb.name, team_abbr: qb.team_abbr, position: qb.position, delta: { passingAttempts: 1, ...(passCompleted ? { passingCompletions: 1, passingYards: result.yards } : {}) } },
+  ];
+  if (passCompleted) {
+    passStats.push({ name: receiver.name, team_abbr: receiver.team_abbr, position: receiver.position, delta: { receptions: 1, receivingYards: result.yards } });
+    const passTackler = pickRandomDefender(defRoster, "DB", "LB", "DL");
+    passStats.push({ name: passTackler.name, team_abbr: passTackler.team_abbr, position: passTackler.position, delta: { tackles: 1 } });
+  }
+  result.playerStats = passStats;
 
   return result;
 }
@@ -381,4 +427,41 @@ export function getInitialStats() {
     fieldGoalAttempts: 0,
     punts: 0,
   };
+}
+
+export function getInitialPlayerStats(teamAbbrs) {
+  const stats = {};
+  for (const abbr of teamAbbrs) stats[abbr] = {};
+  return stats;
+}
+
+export function applyPlayerStats(playerStats, deltas) {
+  if (!deltas || deltas.length === 0) return playerStats;
+  const updated = {};
+  for (const team of Object.keys(playerStats)) {
+    updated[team] = {};
+    for (const name of Object.keys(playerStats[team])) {
+      updated[team][name] = { ...playerStats[team][name] };
+    }
+  }
+  for (const entry of deltas) {
+    const team = entry.team_abbr;
+    if (!updated[team]) updated[team] = {};
+    if (!updated[team][entry.name]) {
+      updated[team][entry.name] = {
+        name: entry.name,
+        team_abbr: team,
+        position: entry.position || "",
+        passingAttempts: 0, passingCompletions: 0, passingYards: 0, passingTDs: 0,
+        interceptionsThrown: 0, timesSacked: 0,
+        rushingAttempts: 0, rushingYards: 0, rushingTDs: 0, fumbles: 0,
+        receptions: 0, receivingYards: 0, receivingTDs: 0,
+        interceptionsMade: 0, sacksMade: 0, tackles: 0,
+      };
+    }
+    for (const [key, value] of Object.entries(entry.delta)) {
+      updated[team][entry.name][key] = (updated[team][entry.name][key] || 0) + value;
+    }
+  }
+  return updated;
 }

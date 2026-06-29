@@ -8,6 +8,7 @@ import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ScrollToTop from './components/ScrollToTop';
 import TeamSelect from './pages/TeamSelect';
 import Game from './pages/Game';
+import SeasonStats from './pages/SeasonStats';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -37,6 +38,7 @@ const AuthenticatedApp = () => {
     <Routes>
       <Route path="/" element={<TeamSelect />} />
       <Route path="/game" element={<Game />} />
+      <Route path="/season" element={<SeasonStats />} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

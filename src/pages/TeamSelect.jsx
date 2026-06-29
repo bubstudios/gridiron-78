@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { NFL_1978_TEAMS } from '@/lib/nfl1978data';
-import { ChevronRight, MapPin, Users, Star } from 'lucide-react';
+import { ChevronRight, MapPin, Users, Star, BarChart3 } from 'lucide-react';
 
 export default function TeamSelect() {
   const navigate = useNavigate();
@@ -47,6 +47,9 @@ export default function TeamSelect() {
         </h1>
         <p className="text-slate-400 mt-2 text-lg">Football Simulation</p>
         <div className="w-24 h-1 bg-amber-500 mx-auto mt-4 rounded-full" />
+        <Link to="/season" className="inline-flex items-center gap-1.5 text-slate-400 hover:text-amber-400 text-sm mt-3 transition-colors">
+          <BarChart3 size={14} /> Season Stats
+        </Link>
       </div>
 
       {/* Step indicator */}

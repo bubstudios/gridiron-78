@@ -9,7 +9,10 @@ import PlaySelector from '@/components/game/PlaySelector';
 import PlayLog from '@/components/game/PlayLog';
 import GameStats from '@/components/game/GameStats';
 import { OFFENSIVE_PLAYS, DEFENSIVE_PLAYS } from '@/lib/playbook';
-import { ArrowLeft, BarChart3, ScrollText } from 'lucide-react';
+import { ArrowLeft, BarChart3, ScrollText, Users } from 'lucide-react';
+import { base44 } from '@/api/base44Client';
+import PlayerStatsTable from '@/components/game/PlayerStatsTable';
+import { applyPlayerStats, getInitialPlayerStats } from '@/lib/gameEngine';
 
 function getTeam(abbr) {
   return NFL_1978_TEAMS.find(t => t.abbreviation === abbr);
@@ -84,11 +87,55 @@ export default function Game() {
       receiving_second_half: coinWinner === userAbbr ? oppAbbr : userAbbr,
       awaitingXP: false,
       lastTDTeam: null,
+      player_stats: getInitialPlayerStats([userAbbr, oppAbbr]),
     };
   });
 
-  const [tab, setTab] = useState("plays"); // "plays" | "stats" | "log"
+  const [tab, setTab] = useState("plays"); // "plays" | "stats" | "log" | "players"
   const [animating, setAnimating] = useState(false);
+  const [statsSaved, setStatsSaved] = useState(false);
+
+  // Save player stats to database when game ends
+  useEffect(() => {
+    if (gameState.status === "completed" && !statsSaved) {
+      const records = [];
+      for (const teamAbbr of [userAbbr, oppAbbr]) {
+        const teamStats = gameState.player_stats?.[teamAbbr] || {};
+        const opponentAbbr = teamAbbr === userAbbr ? oppAbbr : userAbbr;
+        for (const player of Object.values(teamStats)) {
+          records.push({
+            player_name: player.name,
+            team_abbr: teamAbbr,
+            opponent_abbr: opponentAbbr,
+            player_position: player.position || "",
+            passing_attempts: player.passingAttempts || 0,
+            passing_completions: player.passingCompletions || 0,
+            passing_yards: player.passingYards || 0,
+            passing_tds: player.passingTDs || 0,
+            interceptions_thrown: player.interceptionsThrown || 0,
+            times_sacked: player.timesSacked || 0,
+            rushing_attempts: player.rushingAttempts || 0,
+            rushing_yards: player.rushingYards || 0,
+            rushing_tds: player.rushingTDs || 0,
+            fumbles: player.fumbles || 0,
+            receptions: player.receptions || 0,
+            receiving_yards: player.receivingYards || 0,
+            receiving_tds: player.receivingTDs || 0,
+            interceptions_made: player.interceptionsMade || 0,
+            sacks_made: player.sacksMade || 0,
+            tackles: player.tackles || 0,
+          });
+        }
+      }
+      if (records.length > 0) {
+        base44.entities.PlayerGameStat.bulkCreate(records)
+          .then(() => setStatsSaved(true))
+          .catch(() => setStatsSaved(true));
+      } else {
+        setStatsSaved(true);
+      }
+    }
+  }, [gameState.status, statsSaved, userAbbr, oppAbbr, gameState.player_stats]);
 
   const userOnOffense = gameState.possession === userAbbr;
   const isGameOver = gameState.status === "completed";
@@ -115,6 +162,7 @@ export default function Game() {
         }
 
         const result = simulatePlay(gs, offPlay, defPlay, offRoster, defRoster);
+        const newPlayerStats = applyPlayerStats(gs.player_stats, result.playerStats);
         const newLogs = [...gs.play_log];
         const offStats = offTeam === oppAbbr ? { ...gs.home_stats } : { ...gs.away_stats };
         const defStats = defTeam === oppAbbr ? { ...gs.home_stats } : { ...gs.away_stats };
@@ -327,6 +375,7 @@ export default function Game() {
           status: newStatus,
           home_stats: newHomeStats,
           away_stats: newAwayStats,
+          player_stats: newPlayerStats,
           awaitingXP,
           lastTDTeam,
         };
@@ -457,6 +506,12 @@ export default function Game() {
                 <BarChart3 size={14} /> Stats
               </button>
               <button
+                onClick={() => setTab("players")}
+                className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${tab === "players" ? "bg-slate-700 text-white" : "text-slate-400 hover:text-white"}`}
+              >
+                <Users size={14} /> Players
+              </button>
+              <button
                 onClick={() => setTab("log")}
                 className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${tab === "log" ? "bg-slate-700 text-white" : "text-slate-400 hover:text-white"}`}
               >
@@ -482,6 +537,14 @@ export default function Game() {
                 awayStats={gameState.away_stats}
                 homeAbbr={oppAbbr}
                 awayAbbr={userAbbr}
+              />
+            )}
+
+            {tab === "players" && (
+              <PlayerStatsTable
+                playerStats={gameState.player_stats}
+                userAbbr={userAbbr}
+                oppAbbr={oppAbbr}
               />
             )}
 
