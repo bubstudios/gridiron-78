@@ -25,8 +25,8 @@ export default function PlaySelector({ isOffense, onSelectPlay, disabled, down, 
 
   return (
     <div className="bg-slate-900 rounded-xl border border-slate-700 overflow-hidden">
-      <div className="px-4 py-3 border-b border-slate-700">
-        <h3 className="text-white font-semibold flex items-center gap-2">
+      <div className="px-3 sm:px-4 py-2 sm:py-3 border-b border-slate-700">
+        <h3 className="text-white font-semibold flex items-center gap-2 text-sm sm:text-base">
           {isOffense ? <Zap size={16} className="text-amber-400" /> : <Shield size={16} className="text-blue-400" />}
           {isOffense ? "Call Offensive Play" : "Call Defensive Play"}
         </h3>
@@ -50,7 +50,7 @@ export default function PlaySelector({ isOffense, onSelectPlay, disabled, down, 
         )}
       </div>
 
-      <div className="max-h-[360px] overflow-y-auto">
+      <div className="max-h-[280px] sm:max-h-[360px] overflow-y-auto">
         {Object.entries(categorized).map(([category, catPlays]) => (
           <div key={category}>
             <button

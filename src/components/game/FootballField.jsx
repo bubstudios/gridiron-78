@@ -31,9 +31,8 @@ export default function FootballField({ ballOn, direction, down, yardsToGo, poss
   const defensivePlayers = getDefensivePositions(losX, direction);
 
   return (
-    <div className="w-full overflow-x-auto">
-      <div className="mx-auto" style={{ width: totalWidth, minWidth: totalWidth }}>
-        <svg width={totalWidth} height={FIELD_HEIGHT + 40} viewBox={`0 0 ${totalWidth} ${FIELD_HEIGHT + 40}`}>
+    <div className="w-full">
+        <svg width="100%" viewBox={`0 0 ${totalWidth} ${FIELD_HEIGHT + 40}`} preserveAspectRatio="xMidYMid meet" style={{ display: 'block' }}>
           {/* Left Endzone */}
           <rect x={0} y={20} width={ENDZONE_WIDTH} height={FIELD_HEIGHT} fill="#1a5c2a" stroke="#fff" strokeWidth={2} />
           <text x={ENDZONE_WIDTH / 2} y={FIELD_HEIGHT / 2 + 20} fill="white" fontSize="14" fontWeight="bold" textAnchor="middle" transform={`rotate(-90, ${ENDZONE_WIDTH / 2}, ${FIELD_HEIGHT / 2 + 20})`} opacity={0.7}>
@@ -116,12 +115,11 @@ export default function FootballField({ ballOn, direction, down, yardsToGo, poss
         </svg>
 
         {/* Field info bar */}
-        <div className="flex justify-between items-center px-4 py-1 text-xs text-slate-400 font-mono">
+        <div className="flex justify-between items-center px-2 py-1 text-xs text-slate-400 font-mono">
           <span>{homeAbbr} ←</span>
           <span>Ball on {ballOn > 50 ? `${awayAbbr} ${100 - ballOn}` : ballOn === 50 ? "50" : `${homeAbbr} ${ballOn}`}</span>
           <span>→ {awayAbbr}</span>
         </div>
-      </div>
     </div>
   );
 }

@@ -469,20 +469,22 @@ export default function Game() {
   return (
     <div className="min-h-screen bg-slate-950">
       {/* Top nav */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
-        <Link to="/" className="text-slate-400 hover:text-white transition-colors flex items-center gap-2 text-sm">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-slate-800 sticky top-0 z-30 bg-slate-950">
+        <Link to="/" className="text-slate-400 hover:text-white transition-colors flex items-center gap-1.5 text-sm">
           <ArrowLeft size={16} /> Back
         </Link>
         <div className="text-amber-400 font-bold text-sm tracking-wide">NFL 1978</div>
-        <div className="w-16" />
+        <Link to="/season" className="text-slate-400 hover:text-white transition-colors text-xs flex items-center gap-1">
+          <BarChart3 size={14} /> Stats
+        </Link>
       </div>
 
-      <div className="max-w-5xl mx-auto px-3 py-4 space-y-4">
+      <div className="max-w-2xl mx-auto px-2 sm:px-3 py-2 sm:py-4 space-y-2 sm:space-y-4">
         {/* Scoreboard */}
         <Scoreboard gameState={gameState} homeTeam={homeTeam} awayTeam={awayTeam} />
 
         {/* Field */}
-        <div className="bg-slate-900 rounded-xl border border-slate-700 p-3 overflow-hidden">
+        <div className="bg-slate-900 rounded-xl border border-slate-700 p-2 sm:p-3 overflow-hidden">
           <FootballField
             ballOn={gameState.ball_on}
             direction={gameState.direction}
@@ -540,30 +542,30 @@ export default function Game() {
         {/* Tabs */}
         {!isGameOver && !gameState.awaitingXP && !gameState.awaitingKickoff && (
           <>
-            <div className="flex gap-1 bg-slate-900 rounded-lg p-1 border border-slate-700">
+            <div className="flex gap-1 bg-slate-900 rounded-lg p-1 border border-slate-700 sticky top-[44px] z-20">
               <button
                 onClick={() => setTab("plays")}
-                className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${tab === "plays" ? "bg-slate-700 text-white" : "text-slate-400 hover:text-white"}`}
+                className={`flex-1 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors flex items-center justify-center gap-1 ${tab === "plays" ? "bg-slate-700 text-white" : "text-slate-400 hover:text-white"}`}
               >
-                🏈 Call Play
+                🏈 Play
               </button>
               <button
                 onClick={() => setTab("stats")}
-                className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${tab === "stats" ? "bg-slate-700 text-white" : "text-slate-400 hover:text-white"}`}
+                className={`flex-1 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors flex items-center justify-center gap-1 ${tab === "stats" ? "bg-slate-700 text-white" : "text-slate-400 hover:text-white"}`}
               >
-                <BarChart3 size={14} /> Stats
+                <BarChart3 size={13} /> Stats
               </button>
               <button
                 onClick={() => setTab("players")}
-                className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${tab === "players" ? "bg-slate-700 text-white" : "text-slate-400 hover:text-white"}`}
+                className={`flex-1 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors flex items-center justify-center gap-1 ${tab === "players" ? "bg-slate-700 text-white" : "text-slate-400 hover:text-white"}`}
               >
-                <Users size={14} /> Players
+                <Users size={13} /> Players
               </button>
               <button
                 onClick={() => setTab("log")}
-                className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${tab === "log" ? "bg-slate-700 text-white" : "text-slate-400 hover:text-white"}`}
+                className={`flex-1 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors flex items-center justify-center gap-1 ${tab === "log" ? "bg-slate-700 text-white" : "text-slate-400 hover:text-white"}`}
               >
-                <ScrollText size={14} /> Log
+                <ScrollText size={13} /> Log
               </button>
             </div>
 
