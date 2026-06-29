@@ -118,48 +118,48 @@ export default function FootballField({ ballOn, direction, down, yardsToGo, poss
 function getOffensivePositions(losY, direction) {
   const cx = FIELD_WIDTH / 2;
   const spacing = 22;
-  // Offense always positioned toward bottom (higher Y values) when going "right" (toward top endzone)
-  const offenseY = direction === "right" ? losY + 12 : losY - 12;
+  // Offense positioned toward the direction they're moving
+  const offenseY = direction === "right" ? losY - 12 : losY + 12;
 
   return [
-    // O-Line (white) - horizontal line across field
-    { x: cx - spacing * 2, y: offenseY, color: "#FFFFFF", stroke: "#9ca3af", label: "LT", textColor: "#111" },
-    { x: cx - spacing * 0.8, y: offenseY, color: "#FFFFFF", stroke: "#9ca3af", label: "LG", textColor: "#111" },
-    { x: cx, y: offenseY, color: "#FFFFFF", stroke: "#9ca3af", label: "C", textColor: "#111" },
-    { x: cx + spacing * 0.8, y: offenseY, color: "#FFFFFF", stroke: "#9ca3af", label: "RG", textColor: "#111" },
-    { x: cx + spacing * 2, y: offenseY, color: "#FFFFFF", stroke: "#9ca3af", label: "RT", textColor: "#111" },
-    // QB (red) - behind center
-    { x: cx, y: direction === "right" ? losY + 30 : losY - 30, color: "#ef4444", stroke: "#b91c1c", label: "QB", textColor: "#fff" },
+    // O-Line (white) - on the LOS
+    { x: cx - spacing * 2, y: losY, color: "#FFFFFF", stroke: "#9ca3af", label: "LT", textColor: "#111" },
+    { x: cx - spacing * 0.8, y: losY, color: "#FFFFFF", stroke: "#9ca3af", label: "LG", textColor: "#111" },
+    { x: cx, y: losY, color: "#FFFFFF", stroke: "#9ca3af", label: "C", textColor: "#111" },
+    { x: cx + spacing * 0.8, y: losY, color: "#FFFFFF", stroke: "#9ca3af", label: "RG", textColor: "#111" },
+    { x: cx + spacing * 2, y: losY, color: "#FFFFFF", stroke: "#9ca3af", label: "RT", textColor: "#111" },
+    // QB (red) - behind O-line
+    { x: cx, y: offenseY, color: "#ef4444", stroke: "#b91c1c", label: "QB", textColor: "#fff" },
     // RB/FB (blue) - behind QB
-    { x: cx - 18, y: direction === "right" ? losY + 48 : losY - 48, color: "#3b82f6", stroke: "#1d4ed8", label: "RB", textColor: "#fff" },
-    { x: cx + 18, y: direction === "right" ? losY + 48 : losY - 48, color: "#3b82f6", stroke: "#1d4ed8", label: "FB", textColor: "#fff" },
-    // WR/TE (green) - wide
-    { x: cx - spacing * 3.8, y: offenseY, color: "#22c55e", stroke: "#15803d", label: "WR", textColor: "#fff" },
-    { x: cx + spacing * 3.8, y: offenseY, color: "#22c55e", stroke: "#15803d", label: "WR", textColor: "#fff" },
-    { x: cx + spacing * 2.8, y: offenseY, color: "#22c55e", stroke: "#15803d", label: "TE", textColor: "#fff" },
+    { x: cx - 18, y: direction === "right" ? losY - 48 : losY + 48, color: "#3b82f6", stroke: "#1d4ed8", label: "RB", textColor: "#fff" },
+    { x: cx + 18, y: direction === "right" ? losY - 48 : losY + 48, color: "#3b82f6", stroke: "#1d4ed8", label: "FB", textColor: "#fff" },
+    // WR/TE (green) - wide, on LOS
+    { x: cx - spacing * 3.8, y: losY, color: "#22c55e", stroke: "#15803d", label: "WR", textColor: "#fff" },
+    { x: cx + spacing * 3.8, y: losY, color: "#22c55e", stroke: "#15803d", label: "WR", textColor: "#fff" },
+    { x: cx + spacing * 2.8, y: losY, color: "#22c55e", stroke: "#15803d", label: "TE", textColor: "#fff" },
   ];
 }
 
 function getDefensivePositions(losY, direction) {
   const cx = FIELD_WIDTH / 2;
   const spacing = 22;
-  // Defense always positioned toward top (lower Y values) when offense goes "right"
-  const defenseY = direction === "right" ? losY - 12 : losY + 12;
+  // Defense positioned opposite the offense
+  const defenseY = direction === "right" ? losY + 12 : losY - 12;
 
   return [
-    // DL - horizontal line
-    { x: cx - spacing * 2, y: defenseY, label: "DE" },
-    { x: cx - spacing * 0.6, y: defenseY, label: "DT" },
-    { x: cx + spacing * 0.6, y: defenseY, label: "DT" },
-    { x: cx + spacing * 2, y: defenseY, label: "DE" },
-    // LBs
-    { x: cx - spacing * 1.8, y: direction === "right" ? losY - 32 : losY + 32, label: "LB" },
-    { x: cx, y: direction === "right" ? losY - 32 : losY + 32, label: "MLB" },
-    { x: cx + spacing * 1.8, y: direction === "right" ? losY - 32 : losY + 32, label: "LB" },
-    // DBs - deep
-    { x: cx - spacing * 3.5, y: direction === "right" ? losY - 55 : losY + 55, label: "CB" },
-    { x: cx + spacing * 3.5, y: direction === "right" ? losY - 55 : losY + 55, label: "CB" },
-    { x: cx - spacing * 1.2, y: direction === "right" ? losY - 75 : losY + 75, label: "SS" },
-    { x: cx + spacing * 1.2, y: direction === "right" ? losY - 75 : losY + 75, label: "FS" },
+    // DL - on the LOS facing offense
+    { x: cx - spacing * 2, y: losY, label: "DE" },
+    { x: cx - spacing * 0.6, y: losY, label: "DT" },
+    { x: cx + spacing * 0.6, y: losY, label: "DT" },
+    { x: cx + spacing * 2, y: losY, label: "DE" },
+    // LBs - behind DL
+    { x: cx - spacing * 1.8, y: defenseY, label: "LB" },
+    { x: cx, y: defenseY, label: "MLB" },
+    { x: cx + spacing * 1.8, y: defenseY, label: "LB" },
+    // DBs - deep behind LBs
+    { x: cx - spacing * 3.5, y: direction === "right" ? losY + 55 : losY - 55, label: "CB" },
+    { x: cx + spacing * 3.5, y: direction === "right" ? losY + 55 : losY - 55, label: "CB" },
+    { x: cx - spacing * 1.2, y: direction === "right" ? losY + 75 : losY - 75, label: "SS" },
+    { x: cx + spacing * 1.2, y: direction === "right" ? losY + 75 : losY - 75, label: "FS" },
   ];
 }
