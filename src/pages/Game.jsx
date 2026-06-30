@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { NFL_1978_TEAMS } from '@/lib/nfl1978data';
 import { getRoster } from '@/lib/nfl1978data';
@@ -58,7 +58,7 @@ export default function Game() {
   const [gameState, setGameState] = useState(() => {
     const weather = generateWeather(homeTeam?.stadium_type);
     const coinWinner = Math.random() > 0.5 ? userAbbr : oppAbbr;
-    const receiving = coinWinner; // winner receives
+    const receiving = coinWinner;
     return {
       home_team_abbr: oppAbbr,
       away_team_abbr: userAbbr,
@@ -94,13 +94,15 @@ export default function Game() {
     };
   });
 
-  const [tab, setTab] = useState("plays"); // "plays" | "stats" | "log" | "players"
+  const [tab, setTab] = useState("plays");
   const [animating, setAnimating] = useState(false);
   const [statsSaved, setStatsSaved] = useState(false);
-  const [selectedPlay, setSelectedPlay] = useState(null); // Play selected but not yet hiked
-  const [awaitingHike, setAwaitingHike] = useState(false); // Waiting for hike button tap
+  const [selectedPlay, setSelectedPlay] = useState(null);
+  const [awaitingHike, setAwaitingHike] = useState(false);
+  const [animatePlay, setAnimatePlay] = useState(null);
+  const pendingResultRef = useRef(null);
+  const animKeyRef = useRef(0);
 
-  // Save player stats to database when game ends
   useEffect(() => {
     if (gameState.status === "completed" && !statsSaved) {
       const records = [];
@@ -145,258 +147,260 @@ export default function Game() {
   const userOnOffense = gameState.possession === userAbbr;
   const isGameOver = gameState.status === "completed";
 
-  // Select a play (sets awaiting hike)
   const handleSelectPlay = useCallback((play) => {
     if (animating || isGameOver || awaitingHike) return;
     setSelectedPlay(play);
     setAwaitingHike(true);
   }, [animating, isGameOver, awaitingHike]);
 
-  // Execute the play after hike
+  // Commit the play result to game state (called after animation finishes)
+  const commitPlay = useCallback((result, offPlay, defPlay, offTeam, defTeam) => {
+    setGameState(prev => {
+      const gs = { ...prev };
+      const newPlayerStats = applyPlayerStats(gs.player_stats, result.playerStats);
+      const newLogs = [...gs.play_log];
+      const offStats = offTeam === oppAbbr ? { ...gs.home_stats } : { ...gs.away_stats };
+      const defStats = defTeam === oppAbbr ? { ...gs.home_stats } : { ...gs.away_stats };
+
+      if (offTeam === userAbbr) {
+        newLogs.push(`📋 You called: ${offPlay.name}`);
+      } else {
+        newLogs.push(`📋 You called: ${defPlay.name}`);
+      }
+
+      if (offPlay.type === "run") {
+        offStats.rushAttempts = (offStats.rushAttempts || 0) + 1;
+        if (result.yards > 0) offStats.rushingYards = (offStats.rushingYards || 0) + result.yards;
+      }
+      if (offPlay.type === "pass") {
+        offStats.attempts = (offStats.attempts || 0) + 1;
+        if (result.yards > 0 && !result.sack) {
+          offStats.completions = (offStats.completions || 0) + 1;
+          offStats.passingYards = (offStats.passingYards || 0) + result.yards;
+        }
+        if (result.sack) defStats.sacks = (defStats.sacks || 0) + 1;
+      }
+      if (result.penalty) {
+        if (result.penalty.onOffense) {
+          offStats.penalties = (offStats.penalties || 0) + 1;
+          offStats.penaltyYards = (offStats.penaltyYards || 0) + Math.abs(result.penalty.yards);
+        } else {
+          defStats.penalties = (defStats.penalties || 0) + 1;
+          defStats.penaltyYards = (defStats.penaltyYards || 0) + Math.abs(result.penalty.yards);
+        }
+      }
+      if (result.turnover) offStats.turnovers = (offStats.turnovers || 0) + 1;
+
+      offStats.totalYards = (offStats.passingYards || 0) + (offStats.rushingYards || 0);
+
+      let newBallOn = gs.ball_on;
+      let newDown = gs.down;
+      let newYTG = gs.yards_to_go;
+      let newPossession = gs.possession;
+      let newDirection = gs.direction;
+      let homeScore = gs.home_score;
+      let awayScore = gs.away_score;
+      let awaitingXP = false;
+      let lastTDTeam = null;
+      let awaitingKickoff = false;
+      let kickoffKickingTeam = null;
+
+      newLogs.push(result.description);
+
+      if (result.injury) {
+        const sev = result.injury.severity === "out_for_game" ? "is OUT for the game" : "is shaken up but stays in";
+        newLogs.push(`🏥 ${result.injury.player} ${sev}!`);
+      }
+
+      if (result.isPunt) {
+        if (gs.direction === "right") {
+          newBallOn = Math.max(1, Math.min(99, gs.ball_on + result.yards - (result.returnYards || 0)));
+        } else {
+          newBallOn = Math.max(1, Math.min(99, gs.ball_on - result.yards + (result.returnYards || 0)));
+        }
+        newPossession = defTeam;
+        newDirection = gs.direction === "right" ? "left" : "right";
+        newDown = 1;
+        newYTG = 10;
+      } else if (result.touchdown) {
+        if (offTeam === oppAbbr) homeScore += 6;
+        else awayScore += 6;
+        newLogs.push("🏈 TOUCHDOWN!");
+        awaitingXP = true;
+        lastTDTeam = offTeam;
+      } else if (result.fieldGoalGood) {
+        if (offTeam === oppAbbr) homeScore += 3;
+        else awayScore += 3;
+        offStats.fieldGoals = (offStats.fieldGoals || 0) + 1;
+        offStats.fieldGoalAttempts = (offStats.fieldGoalAttempts || 0) + 1;
+        awaitingKickoff = true;
+        kickoffKickingTeam = offTeam;
+      } else if (result.turnover) {
+        if (result.turnoverType === "missed_fg") {
+          offStats.fieldGoalAttempts = (offStats.fieldGoalAttempts || 0) + 1;
+        }
+        newPossession = defTeam;
+        newDirection = gs.direction === "right" ? "left" : "right";
+        if (result.turnoverType === "interception") {
+          const intReturn = Math.floor(Math.random() * 20);
+          if (gs.direction === "right") {
+            newBallOn = Math.max(1, Math.min(99, gs.ball_on + intReturn));
+          } else {
+            newBallOn = Math.max(1, Math.min(99, gs.ball_on - intReturn));
+          }
+        }
+        newDown = 1;
+        newYTG = 10;
+      } else {
+        if (gs.direction === "right") {
+          newBallOn = Math.max(1, Math.min(99, gs.ball_on + result.yards));
+        } else {
+          newBallOn = Math.max(1, Math.min(99, gs.ball_on - result.yards));
+        }
+
+        if (result.yards >= gs.yards_to_go && !result.penalty) {
+          newDown = 1;
+          newYTG = 10;
+          offStats.firstDowns = (offStats.firstDowns || 0) + 1;
+          const yte = gs.direction === "right" ? (100 - newBallOn) : newBallOn;
+          if (yte < 10) newYTG = yte;
+        } else if (result.penalty) {
+          // After penalty, replay the down
+        } else {
+          newDown = gs.down + 1;
+          newYTG = Math.max(1, gs.yards_to_go - Math.max(0, result.yards));
+
+          if (newDown > 4) {
+            newLogs.push("Turnover on downs!");
+            newPossession = defTeam;
+            newDirection = gs.direction === "right" ? "left" : "right";
+            newDown = 1;
+            newYTG = 10;
+          }
+        }
+      }
+
+      // Safety check
+      if (newBallOn <= 1 && gs.direction === "right" && newPossession === offTeam && !result.touchdown) {
+        if (defTeam === oppAbbr) homeScore += 2;
+        else awayScore += 2;
+        newLogs.push("⚠️ SAFETY! 2 points for the defense!");
+        newPossession = offTeam;
+        newBallOn = 20;
+        newDirection = gs.direction;
+        newDown = 1;
+        newYTG = 10;
+      }
+      if (newBallOn >= 99 && gs.direction === "left" && newPossession === offTeam && !result.touchdown) {
+        if (defTeam === oppAbbr) homeScore += 2;
+        else awayScore += 2;
+        newLogs.push("⚠️ SAFETY! 2 points for the defense!");
+        newPossession = offTeam;
+        newBallOn = 80;
+        newDirection = gs.direction;
+        newDown = 1;
+        newYTG = 10;
+      }
+
+      let newTime = gs.time_remaining - result.timeUsed;
+      let newQuarter = gs.quarter;
+      let newStatus = gs.status;
+
+      if (newTime <= 0) {
+        if (newQuarter < 4) {
+          newQuarter += 1;
+          newTime = 900;
+          newLogs.push(`--- QUARTER ${newQuarter} ---`);
+
+          if (newQuarter === 3) {
+            newLogs.push("--- HALFTIME ---");
+            awaitingKickoff = true;
+            kickoffKickingTeam = gs.receiving_second_half === userAbbr ? oppAbbr : userAbbr;
+          }
+        } else {
+          newTime = 0;
+          newStatus = "completed";
+          newLogs.push("--- GAME OVER ---");
+          if (homeScore > awayScore) {
+            newLogs.push(`${homeTeam?.city} ${homeTeam?.name} win!`);
+          } else if (awayScore > homeScore) {
+            newLogs.push(`${awayTeam?.city} ${awayTeam?.name} win!`);
+          } else {
+            newLogs.push("The game ends in a tie!");
+          }
+        }
+      }
+
+      const newHomeStats = offTeam === oppAbbr ? offStats : defStats;
+      const newAwayStats = offTeam === userAbbr ? offStats : defStats;
+
+      return {
+        ...gs,
+        ball_on: newBallOn,
+        down: newDown,
+        yards_to_go: newYTG,
+        possession: newPossession,
+        direction: newDirection,
+        home_score: homeScore,
+        away_score: awayScore,
+        quarter: newQuarter,
+        time_remaining: Math.max(0, newTime),
+        play_log: newLogs,
+        status: newStatus,
+        home_stats: newHomeStats,
+        away_stats: newAwayStats,
+        player_stats: newPlayerStats,
+        awaitingXP,
+        lastTDTeam,
+        awaitingKickoff,
+        kickoffKickingTeam,
+      };
+    });
+  }, [userAbbr, oppAbbr, homeTeam, awayTeam]);
+
+  // Phase A: compute result, trigger animation
   const handleHike = useCallback(() => {
     if (!selectedPlay || animating || isGameOver) return;
     setAnimating(true);
     setAwaitingHike(false);
 
-    setTimeout(() => {
-      setGameState(prev => {
-        const gs = { ...prev };
-        const offTeam = gs.possession;
-        const defTeam = offTeam === userAbbr ? oppAbbr : userAbbr;
-        const offRoster = rosters[offTeam];
-        const defRoster = rosters[defTeam];
+    const gs = gameState;
+    const offTeam = gs.possession;
+    const defTeam = offTeam === userAbbr ? oppAbbr : userAbbr;
+    const offRoster = rosters[offTeam];
+    const defRoster = rosters[defTeam];
 
-        let offPlay, defPlay;
-        if (offTeam === userAbbr) {
-          offPlay = selectedPlay;
-          defPlay = cpuSelectPlay(false, gs.down, gs.yards_to_go, gs.ball_on, gs.direction);
-        } else {
-          defPlay = selectedPlay;
-          offPlay = cpuSelectPlay(true, gs.down, gs.yards_to_go, gs.ball_on, gs.direction);
-        }
+    let offPlay, defPlay;
+    if (offTeam === userAbbr) {
+      offPlay = selectedPlay;
+      defPlay = cpuSelectPlay(false, gs.down, gs.yards_to_go, gs.ball_on, gs.direction);
+    } else {
+      defPlay = selectedPlay;
+      offPlay = cpuSelectPlay(true, gs.down, gs.yards_to_go, gs.ball_on, gs.direction);
+    }
 
-        const result = simulatePlay(gs, offPlay, defPlay, offRoster, defRoster);
-        const newPlayerStats = applyPlayerStats(gs.player_stats, result.playerStats);
-        const newLogs = [...gs.play_log];
-        const offStats = offTeam === oppAbbr ? { ...gs.home_stats } : { ...gs.away_stats };
-        const defStats = defTeam === oppAbbr ? { ...gs.home_stats } : { ...gs.away_stats };
+    const result = simulatePlay(gs, offPlay, defPlay, offRoster, defRoster);
+    pendingResultRef.current = { result, offPlay, defPlay, offTeam, defTeam };
+    animKeyRef.current += 1;
+    setAnimatePlay({ startYard: result.startYard, endYard: result.endYard, key: animKeyRef.current });
+  }, [selectedPlay, animating, isGameOver, userAbbr, oppAbbr, rosters, gameState]);
 
-        // Log the play call
-        if (offTeam === userAbbr) {
-          newLogs.push(`📋 You called: ${offPlay.name}`);
-        } else {
-          newLogs.push(`📋 You called: ${defPlay.name}`);
-        }
-
-        // Update stats
-        if (offPlay.type === "run") {
-          offStats.rushAttempts = (offStats.rushAttempts || 0) + 1;
-          if (result.yards > 0) offStats.rushingYards = (offStats.rushingYards || 0) + result.yards;
-        }
-        if (offPlay.type === "pass") {
-          offStats.attempts = (offStats.attempts || 0) + 1;
-          if (result.yards > 0 && !result.sack) {
-            offStats.completions = (offStats.completions || 0) + 1;
-            offStats.passingYards = (offStats.passingYards || 0) + result.yards;
-          }
-          if (result.sack) defStats.sacks = (defStats.sacks || 0) + 1;
-        }
-        if (result.penalty) {
-          if (result.penalty.onOffense) {
-            offStats.penalties = (offStats.penalties || 0) + 1;
-            offStats.penaltyYards = (offStats.penaltyYards || 0) + Math.abs(result.penalty.yards);
-          } else {
-            defStats.penalties = (defStats.penalties || 0) + 1;
-            defStats.penaltyYards = (defStats.penaltyYards || 0) + Math.abs(result.penalty.yards);
-          }
-        }
-        if (result.turnover) offStats.turnovers = (offStats.turnovers || 0) + 1;
-
-        offStats.totalYards = (offStats.passingYards || 0) + (offStats.rushingYards || 0);
-
-        // Update game state
-        let newBallOn = gs.ball_on;
-        let newDown = gs.down;
-        let newYTG = gs.yards_to_go;
-        let newPossession = gs.possession;
-        let newDirection = gs.direction;
-        let homeScore = gs.home_score;
-        let awayScore = gs.away_score;
-        let awaitingXP = false;
-        let lastTDTeam = null;
-        let awaitingKickoff = false;
-        let kickoffKickingTeam = null;
-
-        newLogs.push(result.description);
-
-        if (result.injury) {
-          const sev = result.injury.severity === "out_for_game" ? "is OUT for the game" : "is shaken up but stays in";
-          newLogs.push(`🏥 ${result.injury.player} ${sev}!`);
-        }
-
-        if (result.isPunt) {
-          // Change possession after punt
-          if (gs.direction === "right") {
-            newBallOn = Math.max(1, Math.min(99, gs.ball_on + result.yards - (result.returnYards || 0)));
-          } else {
-            newBallOn = Math.max(1, Math.min(99, gs.ball_on - result.yards + (result.returnYards || 0)));
-          }
-          newPossession = defTeam;
-          newDirection = gs.direction === "right" ? "left" : "right";
-          newDown = 1;
-          newYTG = 10;
-        } else if (result.touchdown) {
-          if (offTeam === oppAbbr) homeScore += 6;
-          else awayScore += 6;
-          newLogs.push("🏈 TOUCHDOWN!");
-          awaitingXP = true;
-          lastTDTeam = offTeam;
-        } else if (result.fieldGoalGood) {
-          if (offTeam === oppAbbr) homeScore += 3;
-          else awayScore += 3;
-          offStats.fieldGoals = (offStats.fieldGoals || 0) + 1;
-          offStats.fieldGoalAttempts = (offStats.fieldGoalAttempts || 0) + 1;
-          // Scoring team kicks off
-          awaitingKickoff = true;
-          kickoffKickingTeam = offTeam;
-        } else if (result.turnover) {
-          if (result.turnoverType === "missed_fg") {
-            offStats.fieldGoalAttempts = (offStats.fieldGoalAttempts || 0) + 1;
-          }
-          newPossession = defTeam;
-          newDirection = gs.direction === "right" ? "left" : "right";
-          // Ball stays roughly where it was
-          if (result.turnoverType === "interception") {
-            // Return the int a bit
-            const intReturn = Math.floor(Math.random() * 20);
-            if (gs.direction === "right") {
-              newBallOn = Math.max(1, Math.min(99, gs.ball_on + intReturn));
-            } else {
-              newBallOn = Math.max(1, Math.min(99, gs.ball_on - intReturn));
-            }
-          }
-          newDown = 1;
-          newYTG = 10;
-        } else {
-          // Normal play — advance ball
-          if (gs.direction === "right") {
-            newBallOn = Math.max(1, Math.min(99, gs.ball_on + result.yards));
-          } else {
-            newBallOn = Math.max(1, Math.min(99, gs.ball_on - result.yards));
-          }
-
-          // Check first down
-          if (result.yards >= gs.yards_to_go && !result.penalty) {
-            newDown = 1;
-            newYTG = 10;
-            offStats.firstDowns = (offStats.firstDowns || 0) + 1;
-            // Check yards to endzone for "goal"
-            const yte = gs.direction === "right" ? (100 - newBallOn) : newBallOn;
-            if (yte < 10) newYTG = yte;
-          } else if (result.penalty) {
-            // After penalty, replay the down (simplified)
-            // yards already applied above
-          } else {
-            newDown = gs.down + 1;
-            newYTG = Math.max(1, gs.yards_to_go - Math.max(0, result.yards));
-
-            // Turnover on downs
-            if (newDown > 4) {
-              newLogs.push("Turnover on downs!");
-              newPossession = defTeam;
-              newDirection = gs.direction === "right" ? "left" : "right";
-              newDown = 1;
-              newYTG = 10;
-            }
-          }
-        }
-
-        // Safety check
-        const offEndzone = gs.direction === "right" ? 0 : 100;
-        if (newBallOn <= 1 && gs.direction === "right" && newPossession === offTeam && !result.touchdown) {
-          // Safety
-          if (defTeam === oppAbbr) homeScore += 2;
-          else awayScore += 2;
-          newLogs.push("⚠️ SAFETY! 2 points for the defense!");
-          newPossession = offTeam; // free kick after safety
-          newBallOn = 20;
-          newDirection = gs.direction;
-          newDown = 1;
-          newYTG = 10;
-        }
-        if (newBallOn >= 99 && gs.direction === "left" && newPossession === offTeam && !result.touchdown) {
-          if (defTeam === oppAbbr) homeScore += 2;
-          else awayScore += 2;
-          newLogs.push("⚠️ SAFETY! 2 points for the defense!");
-          newPossession = offTeam;
-          newBallOn = 80;
-          newDirection = gs.direction;
-          newDown = 1;
-          newYTG = 10;
-        }
-
-        // Time management
-        let newTime = gs.time_remaining - result.timeUsed;
-        let newQuarter = gs.quarter;
-        let newStatus = gs.status;
-
-        if (newTime <= 0) {
-          if (newQuarter < 4) {
-            newQuarter += 1;
-            newTime = 900;
-            newLogs.push(`--- QUARTER ${newQuarter} ---`);
-
-            // Halftime - swap possession
-            if (newQuarter === 3) {
-              newLogs.push("--- HALFTIME ---");
-              awaitingKickoff = true;
-              kickoffKickingTeam = gs.receiving_second_half === userAbbr ? oppAbbr : userAbbr;
-            }
-          } else {
-            newTime = 0;
-            newStatus = "completed";
-            newLogs.push("--- GAME OVER ---");
-            if (homeScore > awayScore) {
-              newLogs.push(`${homeTeam?.city} ${homeTeam?.name} win!`);
-            } else if (awayScore > homeScore) {
-              newLogs.push(`${awayTeam?.city} ${awayTeam?.name} win!`);
-            } else {
-              newLogs.push("The game ends in a tie!");
-            }
-          }
-        }
-
-        // Assign stats back
-        const newHomeStats = offTeam === oppAbbr ? offStats : defStats;
-        const newAwayStats = offTeam === userAbbr ? offStats : defStats;
-
-        return {
-          ...gs,
-          ball_on: newBallOn,
-          down: newDown,
-          yards_to_go: newYTG,
-          possession: newPossession,
-          direction: newDirection,
-          home_score: homeScore,
-          away_score: awayScore,
-          quarter: newQuarter,
-          time_remaining: Math.max(0, newTime),
-          play_log: newLogs,
-          status: newStatus,
-          home_stats: newHomeStats,
-          away_stats: newAwayStats,
-          player_stats: newPlayerStats,
-          awaitingXP,
-          lastTDTeam,
-          awaitingKickoff,
-          kickoffKickingTeam,
-        };
-      });
-
+  // Phase B: commit state after animation finishes
+  const handleAnimationDone = useCallback(() => {
+    const pending = pendingResultRef.current;
+    if (!pending) {
       setAnimating(false);
+      setAnimatePlay(null);
       setSelectedPlay(null);
-    }, 400);
-  }, [selectedPlay, animating, isGameOver, userAbbr, oppAbbr, rosters]);
+      return;
+    }
+    const { result, offPlay, defPlay, offTeam, defTeam } = pending;
+    commitPlay(result, offPlay, defPlay, offTeam, defTeam);
+    pendingResultRef.current = null;
+    setAnimatePlay(null);
+    setAnimating(false);
+    setSelectedPlay(null);
+  }, [commitPlay]);
 
   // Handle extra point
   const handleXP = useCallback(() => {
@@ -416,7 +420,6 @@ export default function Game() {
         newLogs.push("Extra point is NO GOOD!");
       }
 
-      // Scoring team kicks off
       return {
         ...gs,
         play_log: newLogs,
@@ -475,12 +478,8 @@ export default function Game() {
     });
   }, [userAbbr, oppAbbr, rosters]);
 
-  // Auto-handle CPU turns when CPU is on offense and user doesn't need to call D
-  // Actually user always calls plays (offense or defense), so no auto needed
-
   return (
     <div className="min-h-screen bg-slate-950">
-      {/* Top nav */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-slate-800 sticky top-0 z-30 bg-slate-950">
         <Link to="/" className="text-slate-400 hover:text-white transition-colors flex items-center gap-1.5 text-sm">
           <ArrowLeft size={16} /> Back
@@ -492,10 +491,8 @@ export default function Game() {
       </div>
 
       <div className="max-w-2xl mx-auto px-2 sm:px-3 py-2 sm:py-4 space-y-2 sm:space-y-4">
-        {/* Scoreboard */}
         <Scoreboard gameState={gameState} homeTeam={homeTeam} awayTeam={awayTeam} />
 
-        {/* Field */}
         <div className="bg-slate-900 rounded-xl border border-slate-700 p-2 sm:p-3 overflow-hidden">
           <FootballField
             ballOn={gameState.ball_on}
@@ -510,10 +507,11 @@ export default function Game() {
             awaitingHike={awaitingHike}
             onHike={handleHike}
             userOnOffense={userOnOffense}
+            animatePlay={animatePlay}
+            onAnimationDone={handleAnimationDone}
           />
         </div>
 
-        {/* Kickoff Banner */}
         {gameState.awaitingKickoff && !gameState.awaitingXP && (
           <KickoffBanner
             kickingTeamAbbr={gameState.kickoffKickingTeam}
@@ -521,7 +519,6 @@ export default function Game() {
           />
         )}
 
-        {/* XP Prompt */}
         {gameState.awaitingXP && (
           <div className="bg-green-900/30 border border-green-700/50 rounded-xl p-6 text-center">
             <p className="text-green-300 font-semibold text-lg mb-3">🏈 TOUCHDOWN!</p>
@@ -534,7 +531,6 @@ export default function Game() {
           </div>
         )}
 
-        {/* Game Over */}
         {isGameOver && (
           <div className="bg-slate-900 rounded-xl border border-amber-500/50 p-6 text-center">
             <p className="text-amber-400 font-bold text-2xl mb-2">FINAL</p>
@@ -554,7 +550,6 @@ export default function Game() {
           </div>
         )}
 
-        {/* Tabs */}
         {!isGameOver && !gameState.awaitingXP && !gameState.awaitingKickoff && (
           <>
             <div className="flex gap-1 bg-slate-900 rounded-lg p-1 border border-slate-700 sticky top-[44px] z-20">
@@ -619,7 +614,6 @@ export default function Game() {
           </>
         )}
 
-        {/* Always show condensed log below play selector */}
         {tab === "plays" && !isGameOver && !gameState.awaitingXP && !gameState.awaitingKickoff && gameState.play_log.length > 0 && (
           <div className="bg-slate-900/60 rounded-lg border border-slate-800 p-3">
             <p className="text-xs text-slate-500 mb-1">Last play:</p>

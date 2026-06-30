@@ -47,7 +47,7 @@ export function generateWeather(stadiumType) {
   return { weather, temperature: temp, wind_speed: windSpeed };
 }
 
-export function simulatePlay(gameState, offensivePlay, defensivePlay, offRoster, defRoster) {
+function simulatePlayCore(gameState, offensivePlay, defensivePlay, offRoster, defRoster) {
   const weather = WEATHER_EFFECTS[gameState.weather] || WEATHER_EFFECTS.clear;
   const result = {
     yards: 0,
@@ -94,6 +94,26 @@ export function simulatePlay(gameState, offensivePlay, defensivePlay, offRoster,
     return simulatePass(offensivePlay, defensivePlay, offRoster, defRoster, weather, result, gameState);
   }
 
+  return result;
+}
+
+export function simulatePlay(gameState, offensivePlay, defensivePlay, offRoster, defRoster) {
+  const snapYard = gameState.ball_on;
+  const result = simulatePlayCore(gameState, offensivePlay, defensivePlay, offRoster, defRoster);
+
+  let endYard;
+  if (result.touchdown) {
+    endYard = gameState.direction === "right" ? 100 : 0;
+  } else if (typeof result.yards === "number") {
+    endYard = gameState.direction === "right"
+      ? Math.max(0, Math.min(100, snapYard + result.yards))
+      : Math.max(0, Math.min(100, snapYard - result.yards));
+  } else {
+    endYard = snapYard;
+  }
+
+  result.startYard = snapYard;
+  result.endYard = endYard;
   return result;
 }
 

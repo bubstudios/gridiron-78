@@ -1,12 +1,61 @@
-import React from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 
 const FIELD_WIDTH = 280;
 const ENDZONE_HEIGHT = 60;
 const fieldHeight = 760;
 const totalHeight = fieldHeight + ENDZONE_HEIGHT * 2;
 
-export default function FootballField({ ballOn, direction, down, yardsToGo, possession, homeAbbr, awayAbbr, homeColor, awayColor, awaitingHike, onHike, userOnOffense }) {
-  const ballY = ENDZONE_HEIGHT + (ballOn / 100) * fieldHeight;
+export default function FootballField({ ballOn, direction, down, yardsToGo, possession, homeAbbr, awayAbbr, homeColor, awayColor, awaitingHike, onHike, userOnOffense, animatePlay, onAnimationDone }) {
+  const scrollRef = useRef(null);
+  const rafRef = useRef(null);
+  const [liveYard, setLiveYard] = useState(ballOn);
+
+  // Keep liveYard synced to ballOn when not animating
+  useEffect(() => {
+    if (!animatePlay) setLiveYard(ballOn);
+  }, [ballOn, animatePlay]);
+
+  // Idle recenter: keep ball centered in camera window when not animating
+  useEffect(() => {
+    if (animatePlay) return;
+    if (!scrollRef.current) return;
+    const yPx = ENDZONE_HEIGHT + (ballOn / 100) * fieldHeight;
+    const container = scrollRef.current;
+    const target = yPx - container.clientHeight / 2;
+    container.scrollTop = Math.max(0, Math.min(target, container.scrollHeight - container.clientHeight));
+  }, [ballOn, animatePlay]);
+
+  // Animation rAF loop
+  useEffect(() => {
+    if (!animatePlay) return;
+    const { startYard, endYard } = animatePlay;
+    const duration = 1200;
+    const t0 = performance.now();
+    const ease = (t) => 1 - Math.pow(1 - t, 2);
+
+    const step = (now) => {
+      const t = Math.min(1, (now - t0) / duration);
+      const y = startYard + (endYard - startYard) * ease(t);
+      setLiveYard(y);
+      if (scrollRef.current) {
+        const yPx = ENDZONE_HEIGHT + (y / 100) * fieldHeight;
+        const container = scrollRef.current;
+        const target = yPx - container.clientHeight / 2;
+        container.scrollTop = Math.max(0, Math.min(target, container.scrollHeight - container.clientHeight));
+      }
+      if (t < 1) {
+        rafRef.current = requestAnimationFrame(step);
+      } else {
+        setLiveYard(endYard);
+        if (onAnimationDone) onAnimationDone();
+      }
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [animatePlay]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const losY = ENDZONE_HEIGHT + (ballOn / 100) * fieldHeight;
+  const ballY = ENDZONE_HEIGHT + (liveYard / 100) * fieldHeight;
 
   let firstDownY = null;
   if (down <= 4 && yardsToGo > 0) {
@@ -17,13 +66,16 @@ export default function FootballField({ ballOn, direction, down, yardsToGo, poss
     }
   }
 
-  const losY = ballY;
   const offensivePlayers = getOffensivePositions(losY, direction);
   const defensivePlayers = getDefensivePositions(losY, direction);
 
   return (
-    <div className="w-full overflow-x-auto">
-      <div className="mx-auto" style={{ width: FIELD_WIDTH + 40, minWidth: FIELD_WIDTH + 40 }}>
+    <div className="w-full">
+      <div
+        ref={scrollRef}
+        className="mx-auto overflow-y-auto overflow-x-hidden rounded-lg"
+        style={{ width: FIELD_WIDTH + 40, height: 420 }}
+      >
         <svg width={FIELD_WIDTH + 40} height={totalHeight} viewBox={`0 0 ${FIELD_WIDTH + 40} ${totalHeight}`}>
           <rect x={20} y={0} width={FIELD_WIDTH} height={ENDZONE_HEIGHT} fill="#1a5c2a" stroke="#fff" strokeWidth={2} />
           <text x={FIELD_WIDTH / 2 + 20} y={ENDZONE_HEIGHT / 2} fill="white" fontSize="14" fontWeight="bold" textAnchor="middle" opacity={0.7}>END ZONE</text>
@@ -65,13 +117,19 @@ export default function FootballField({ ballOn, direction, down, yardsToGo, poss
             </g>
           ))}
 
+          {/* Ball carrier dot (only during animation) */}
+          {animatePlay && (
+            <circle cx={FIELD_WIDTH / 2 + 20} cy={ballY} r={9} fill="#fbbf24" stroke="#b45309" strokeWidth={2} />
+          )}
+
+          {/* Football */}
           <ellipse cx={FIELD_WIDTH / 2 + 20} cy={ballY} rx={3} ry={5} fill="#8B4513" stroke="#5C2D0A" strokeWidth={1} />
 
           {awaitingHike && (
             <g onClick={onHike} style={{ cursor: 'pointer' }}>
               <rect
                 x={FIELD_WIDTH / 2 - 30}
-                y={ballY + (userOnOffense ? 40 : -40)}
+                y={losY + (userOnOffense ? 40 : -40)}
                 width={60}
                 height={28}
                 rx={6}
@@ -81,7 +139,7 @@ export default function FootballField({ ballOn, direction, down, yardsToGo, poss
               />
               <text
                 x={FIELD_WIDTH / 2 + 20}
-                y={ballY + (userOnOffense ? 40 : -40) + 18}
+                y={losY + (userOnOffense ? 40 : -40) + 18}
                 fill="#000"
                 fontSize="12"
                 fontWeight="bold"
@@ -92,12 +150,12 @@ export default function FootballField({ ballOn, direction, down, yardsToGo, poss
             </g>
           )}
         </svg>
+      </div>
 
-        <div className="flex justify-between items-center px-4 py-1 text-xs text-slate-400 font-mono">
-          <span>{homeAbbr} ↓</span>
-          <span>Ball on {ballOn > 50 ? `${awayAbbr} ${100 - ballOn}` : ballOn === 50 ? "50" : `${homeAbbr} ${ballOn}`}</span>
-          <span>↑ {awayAbbr}</span>
-        </div>
+      <div className="flex justify-between items-center px-4 py-1 text-xs text-slate-400 font-mono" style={{ width: FIELD_WIDTH + 40 }}>
+        <span>{homeAbbr} ↓</span>
+        <span>Ball on {ballOn > 50 ? `${awayAbbr} ${100 - ballOn}` : ballOn === 50 ? "50" : `${homeAbbr} ${ballOn}`}</span>
+        <span>↑ {awayAbbr}</span>
       </div>
     </div>
   );
@@ -106,25 +164,19 @@ export default function FootballField({ ballOn, direction, down, yardsToGo, poss
 function getOffensivePositions(losY, direction) {
   const cx = FIELD_WIDTH / 2;
   const spacing = 22;
-  // Offense positioned behind LOS (toward their endzone)
   const behindLOS = direction === "right" ? 15 : -15;
 
   return [
-    // O-Line (white) - 5 players on LOS
     { x: cx - spacing * 2, y: losY, color: "#FFFFFF", stroke: "#9ca3af", label: "LT", textColor: "#111" },
     { x: cx - spacing * 0.8, y: losY, color: "#FFFFFF", stroke: "#9ca3af", label: "LG", textColor: "#111" },
     { x: cx, y: losY, color: "#FFFFFF", stroke: "#9ca3af", label: "C", textColor: "#111" },
     { x: cx + spacing * 0.8, y: losY, color: "#FFFFFF", stroke: "#9ca3af", label: "RG", textColor: "#111" },
     { x: cx + spacing * 2, y: losY, color: "#FFFFFF", stroke: "#9ca3af", label: "RT", textColor: "#111" },
-    // QB (red) - behind center
     { x: cx, y: losY + behindLOS, color: "#ef4444", stroke: "#b91c1c", label: "QB", textColor: "#fff" },
-    // RB/FB (blue) - behind QB
     { x: cx - 20, y: losY + behindLOS * 2, color: "#3b82f6", stroke: "#1d4ed8", label: "RB", textColor: "#fff" },
     { x: cx + 20, y: losY + behindLOS * 2, color: "#3b82f6", stroke: "#1d4ed8", label: "FB", textColor: "#fff" },
-    // WRs (green) - wide on LOS
     { x: cx - 50, y: losY, color: "#22c55e", stroke: "#15803d", label: "WR", textColor: "#fff" },
     { x: cx + 50, y: losY, color: "#22c55e", stroke: "#15803d", label: "WR", textColor: "#fff" },
-    // TE (green) - on LOS outside RT
     { x: cx + spacing * 3.5, y: losY, color: "#22c55e", stroke: "#15803d", label: "TE", textColor: "#fff" },
   ];
 }
@@ -132,20 +184,16 @@ function getOffensivePositions(losY, direction) {
 function getDefensivePositions(losY, direction) {
   const cx = FIELD_WIDTH / 2;
   const spacing = 22;
-  // Defense positioned over LOS (toward opponent's endzone)
   const overLOS = direction === "right" ? -15 : 15;
 
   return [
-    // DL - 4 players on LOS
     { x: cx - spacing * 2.2, y: losY, label: "DE" },
     { x: cx - spacing * 0.7, y: losY, label: "DT" },
     { x: cx + spacing * 0.7, y: losY, label: "DT" },
     { x: cx + spacing * 2.2, y: losY, label: "DE" },
-    // LBs - 3 players behind DL (on defensive side)
     { x: cx - spacing * 1.8, y: losY + overLOS, label: "LB" },
     { x: cx, y: losY + overLOS, label: "MLB" },
     { x: cx + spacing * 1.8, y: losY + overLOS, label: "LB" },
-    // DBs - 4 players deep (2 CBs, 2 Safeties)
     { x: cx - 50, y: losY + overLOS * 2.5, label: "CB" },
     { x: cx + 50, y: losY + overLOS * 2.5, label: "CB" },
     { x: cx - 25, y: losY + overLOS * 4, label: "SS" },
